@@ -1,0 +1,27 @@
+{
+  "name": "Wishit",
+  "short_name": "Wishit",
+  "description": "Organiser ønskelister og gruppeplanlegging for gavehandling",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f8ff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["lifestyle", "shopping", "social"],
+  "lang": "no",
+  "dir": "ltr"
+}
