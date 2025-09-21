@@ -15,12 +15,14 @@ import SettingsModal from '@/components/SettingsModal'
 import WishlistCard from '@/components/WishlistCard'
 import AddWishModal from '@/components/AddWishModal'
 import PremiumBanner from '@/components/PremiumBanner'
+import SecretSantaModal from '@/components/SecretSantaModal'
+import MysteryGiftModal from '@/components/MysteryGiftModal'
 import AuthDebug from '@/components/AuthDebug'
 import toast from 'react-hot-toast'
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user, signOut } = useAuth()
+  const { user, signOut, isPremium } = useAuth()
   const [groups, setGroups] = useState<Group[]>([])
   const [personalWishlists, setPersonalWishlists] = useState<WishlistItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,6 +32,10 @@ export default function DashboardPage() {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showAddWish, setShowAddWish] = useState(false)
+  const [showSecretSantaModal, setShowSecretSantaModal] = useState(false)
+  const [selectedGroupForSecretSanta, setSelectedGroupForSecretSanta] = useState<string | null>(null)
+  const [showMysteryGiftModal, setShowMysteryGiftModal] = useState(false)
+  const [selectedGroupForMysteryGift, setSelectedGroupForMysteryGift] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'groups' | 'personal'>('groups')
   const [bottomNavActive, setBottomNavActive] = useState<'home' | 'groups' | 'wishes' | 'premium'>('home')
 
@@ -45,7 +51,7 @@ export default function DashboardPage() {
     setLoading(true)
     try {
       // Last grupper
-      const { data: groupsData, error: groupsError } = await database.getUserGroups(user.id)
+      const { data: groupsData, error: groupsError } = await database.getUserGroups()
       if (groupsError) {
         console.error('Feil ved lasting av grupper:', groupsError)
         toast.error('Kunne ikke laste grupper. Sjekk at databasen er satt opp riktig.')
@@ -71,6 +77,16 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     await signOut()
     toast.success('Du er nå logget ut')
+  }
+
+  const handleSecretSantaClick = (groupId: string) => {
+    setSelectedGroupForSecretSanta(groupId)
+    setShowSecretSantaModal(true)
+  }
+
+  const handleMysteryGiftClick = (groupId: string) => {
+    setSelectedGroupForMysteryGift(groupId)
+    setShowMysteryGiftModal(true)
   }
 
   const formatPrice = (amount: number) => {
@@ -289,6 +305,9 @@ export default function DashboardPage() {
                           setShowAddWish(true)
                           // TODO: Pass groupId to AddWishModal
                         }}
+                        onSecretSanta={handleSecretSantaClick}
+                        onMysteryGift={handleMysteryGiftClick}
+                        isPremium={isPremium}
                       />
                     ))}
                   </div>
@@ -539,6 +558,54 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Modaler */}
+      <CreateGroupModal
+        isOpen={showCreateGroup}
+        onClose={() => setShowCreateGroup(false)}
+        onSuccess={loadData}
+      />
+
+      <JoinGroupModal
+        isOpen={showJoinGroup}
+        onClose={() => setShowJoinGroup(false)}
+        onSuccess={loadData}
+      />
+
+      <ShareGroupModal
+        isOpen={showShareGroup}
+        onClose={() => setShowShareGroup(false)}
+        group={selectedGroup}
+      />
+
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSuccess={loadData}
+      />
+
+      <AddWishModal
+        isOpen={showAddWish}
+        onClose={() => setShowAddWish(false)}
+        onSuccess={loadData}
+      />
+
+      <SecretSantaModal
+        isOpen={showSecretSantaModal}
+        onClose={() => setShowSecretSantaModal(false)}
+        groupId={selectedGroupForSecretSanta || ''}
+        onSuccess={loadData}
+      />
+
+      <MysteryGiftModal
+        isOpen={showMysteryGiftModal}
+        onClose={() => setShowMysteryGiftModal(false)}
+        groupId={selectedGroupForMysteryGift || ''}
+        isAdmin={true}
+        mysteryGiftEnabled={false}
+        mysteryGiftBudget={200}
+        onSuccess={loadData}
+      />
 
       {/* Add bottom padding for mobile to account for bottom nav */}
       <div className="h-20 md:hidden" />

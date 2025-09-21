@@ -17,7 +17,7 @@ export default function Page() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.push('/dashboard')
+      router.push('/home')
     }
   }, [user, loading, router])
 

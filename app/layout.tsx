@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/useAuth'
 import { Toaster } from 'react-hot-toast'
+import ConditionalNavigation from '@/components/ConditionalNavigation'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -48,37 +50,41 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/favicon.ico" />
       </head>
       <body className={inter.className}>
-        <AuthProvider>
-          {children}
-          <Toaster
-            position="top-center"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: '#fff',
-                color: '#374151',
-                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.75rem',
-                padding: '16px',
-                fontSize: '14px',
-                maxWidth: '400px',
-              },
-              success: {
-                iconTheme: {
-                  primary: '#059669',
-                  secondary: '#ffffff',
+        <ErrorBoundary>
+          <AuthProvider>
+            <ConditionalNavigation>
+              {children}
+            </ConditionalNavigation>
+            <Toaster
+              position="top-center"
+              toastOptions={{
+                duration: 4000,
+                style: {
+                  background: '#fff',
+                  color: '#374151',
+                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '0.75rem',
+                  padding: '16px',
+                  fontSize: '14px',
+                  maxWidth: '400px',
                 },
-              },
-              error: {
-                iconTheme: {
-                  primary: '#dc2626',
-                  secondary: '#ffffff',
+                success: {
+                  iconTheme: {
+                    primary: '#059669',
+                    secondary: '#ffffff',
+                  },
                 },
-              },
-            }}
-          />
-        </AuthProvider>
+                error: {
+                  iconTheme: {
+                    primary: '#dc2626',
+                    secondary: '#ffffff',
+                  },
+                },
+              }}
+            />
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

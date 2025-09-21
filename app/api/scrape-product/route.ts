@@ -197,7 +197,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(metadata)
+    // Returner nøytrale data som "ønskepris"
+    const responseData = {
+      title: metadata.title,
+      description: metadata.description,
+      image: metadata.image,
+      store_name: metadata.siteName,
+      current_price: metadata.price, // Nøytralt navn
+      provider: 'scraper', // Internt navn som ikke vises til brukeren
+    }
+
+    return NextResponse.json(responseData)
 
   } catch (error) {
     console.error('Scraping error:', error)

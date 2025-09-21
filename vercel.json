@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/update-prices",
+      "schedule": "0 9 * * *"
+    }
+  ],
+  "functions": {
+    "app/api/update-prices/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/send-notifications/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

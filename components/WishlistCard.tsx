@@ -2,11 +2,14 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ExternalLink, Gift, Edit, Trash2, ShoppingCart, Check, MessageCircle, Heart, Users, Crown } from 'lucide-react'
+import { ExternalLink, Gift, Edit, Trash2, ShoppingCart, Check, MessageCircle, Heart, Users, Crown, DollarSign } from 'lucide-react'
 import { WishlistItem } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { database } from '@/lib/database'
 import toast from 'react-hot-toast'
+import he from 'he'
+import GiftContributionModal from './GiftContributionModal'
+import EditWishModal from './EditWishModal'
 
 interface WishlistCardProps {
   item: WishlistItem
@@ -29,6 +32,8 @@ export default function WishlistCard({
   const [showPurchaseModal, setShowPurchaseModal] = useState(false)
   const [showThankYouModal, setShowThankYouModal] = useState(false)
   const [showContributeModal, setShowContributeModal] = useState(false)
+  const [showGiftContributionModal, setShowGiftContributionModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [purchaseComment, setPurchaseComment] = useState('')
   const [thankYouMessage, setThankYouMessage] = useState('')
   const [contributionAmount, setContributionAmount] = useState('')
@@ -181,25 +186,63 @@ export default function WishlistCard({
 
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
-              {item.title}
+              {he.decode(item.title)}
             </h3>
             {item.store_name && (
               <p className="text-sm text-gray-500 mb-1">
                 fra {item.store_name}
               </p>
             )}
-            {item.price && (
-              <p className="text-lg font-bold text-christmas-red">
-                {formatPrice(item.price)}
+        {(item.current_price || item.price) && (
+          <div className="space-y-1">
+            <p className="text-lg font-bold text-christmas-red">
+              Ønskepris: {formatPrice(item.current_price || item.price || 0)}
+            </p>
+            {item.previous_price && item.previous_price > (item.current_price || item.price || 0) && (
+              <p className="text-sm text-green-600 font-medium">
+                📉 Prisfall! Tidligere {formatPrice(item.previous_price)}
               </p>
             )}
+            {item.last_price_check && (
+              <p className="text-xs text-gray-500">
+                Sist sjekket: {new Date(item.last_price_check).toLocaleDateString('no-NO')}
+              </p>
+            )}
+            
+            {/* Bidrag-visning */}
+            {item.total_contributed && item.total_contributed > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-800">Bidrag</span>
+                  <span className="text-sm font-semibold text-blue-900">
+                    {formatPrice(item.total_contributed)} / {formatPrice(item.current_price || item.price || 0)}
+                  </span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${Math.min(100, ((item.total_contributed || 0) / (item.current_price || item.price || 1)) * 100)}%` 
+                    }}
+                  />
+                </div>
+                {item.is_fully_funded && (
+                  <p className="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
+                    <Check size={12} />
+                    Fullfinansiert! ✅
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
           </div>
         </div>
 
         {/* Beskrivelse */}
         {item.description && (
           <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-            {item.description}
+            {he.decode(item.description)}
           </p>
         )}
 
@@ -209,7 +252,7 @@ export default function WishlistCard({
             <div className="w-6 h-6 bg-christmas-green text-white rounded-full flex items-center justify-center text-xs font-bold">
               {item.owner.full_name?.[0] || item.owner.email[0].toUpperCase()}
             </div>
-            <span>Ønskes av {item.owner.full_name || item.owner.email}</span>
+            <span>Ønskes av {he.decode(item.owner.full_name || item.owner.email)}</span>
           </div>
         )}
 
@@ -243,13 +286,10 @@ export default function WishlistCard({
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    setPurchaseType('contribute')
-                    setShowContributeModal(true)
-                  }}
+                  onClick={() => setShowGiftContributionModal(true)}
                   className="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
                 >
-                  <Gift size={16} />
+                  <DollarSign size={16} />
                   Bidra
                 </motion.button>
               </div>
@@ -273,7 +313,7 @@ export default function WishlistCard({
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <div className="text-sm text-blue-800">
                       {item.purchase_comment.split('\n').map((line, index) => (
-                        <div key={index}>{line}</div>
+                        <div key={index}>{he.decode(line)}</div>
                       ))}
                     </div>
                   </div>
@@ -314,12 +354,12 @@ export default function WishlistCard({
                 </span>
               )}
               
-              {item.price && isPremium && (
+              {(item.current_price || item.price) && isPremium && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                  {formatPrice(item.price)}
+                  {formatPrice(item.current_price || item.price || 0)}
                 </span>
               )}
-              {item.price && !isPremium && (
+              {(item.current_price || item.price) && !isPremium && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
                   <Crown size={12} />
                   Premium
@@ -330,6 +370,7 @@ export default function WishlistCard({
             {isOwnItem && (
               <>
                 <button
+                  onClick={() => setShowEditModal(true)}
                   className="text-gray-400 hover:text-gray-600 p-2"
                   title="Rediger"
                 >
@@ -510,6 +551,22 @@ export default function WishlistCard({
           </div>
         </div>
       )}
+
+      {/* Gift contribution modal */}
+      <GiftContributionModal
+        isOpen={showGiftContributionModal}
+        onClose={() => setShowGiftContributionModal(false)}
+        wishlistItem={item}
+        onSuccess={onUpdate}
+      />
+
+      {/* Edit wish modal */}
+      <EditWishModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        wishlistItem={item}
+        onSuccess={onUpdate}
+      />
     </motion.div>
   )
 }

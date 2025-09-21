@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, User, Camera, Trash2, Settings, Bell, Mail, Shield, Palette } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -27,6 +27,20 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
     phone: user?.user_metadata?.phone || '',
     bio: user?.user_metadata?.bio || ''
   })
+
+  // Oppdater profilData når user endres
+  React.useEffect(() => {
+    if (user) {
+      setProfileData({
+        full_name: user?.user_metadata?.full_name || '',
+        email: user?.email || '',
+        workplace: user?.user_metadata?.workplace || '',
+        address: user?.user_metadata?.address || '',
+        phone: user?.user_metadata?.phone || '',
+        bio: user?.user_metadata?.bio || ''
+      })
+    }
+  }, [user])
   const [notifications, setNotifications] = useState({
     push: true,
     email: true,

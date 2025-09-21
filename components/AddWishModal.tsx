@@ -17,7 +17,8 @@ interface AddWishModalProps {
 
 export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: AddWishModalProps) {
   const { user } = useAuth()
-  const [step, setStep] = useState<'url' | 'details'>('url')
+  const [step, setStep] = useState<'input' | 'details'>('input')
+  const [inputType, setInputType] = useState<'url' | 'manual'>('url')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [productData, setProductData] = useState<ProductMetadata | null>(null)
@@ -40,7 +41,7 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
     if (!user) return
     
     try {
-      const { data, error } = await database.getUserGroups(user.id)
+      const { data, error } = await database.getUserGroups()
       if (error) {
         console.error('Feil ved lasting av grupper:', error)
       } else {
@@ -51,9 +52,17 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
     }
   }
 
-  const handleUrlSubmit = async (e: React.FormEvent) => {
+  const handleInputSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!url.trim()) return
+    
+    if (inputType === 'url' && !url.trim()) return
+    if (inputType === 'manual' && !formData.title.trim()) return
+
+    if (inputType === 'manual') {
+      // Gå direkte til details for manuell input
+      setStep('details')
+      return
+    }
 
     setLoading(true)
     try {
@@ -72,7 +81,7 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
         setFormData({
           title: data.title || '',
           description: data.description || '',
-          price: data.price ? data.price.toString() : '',
+          price: data.current_price ? data.current_price.toString() : '',
         })
         setStep('details')
       } else {
@@ -96,9 +105,14 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
         title: formData.title.trim(),
         description: formData.description.trim() || undefined,
         url: url.trim(),
-        price: formData.price ? parseFloat(formData.price) : undefined,
+        price: formData.price ? parseFloat(formData.price) : undefined, // Bakoverkompatibilitet
+        current_price: (productData as any)?.current_price || (formData.price ? parseFloat(formData.price) : undefined),
+        previous_price: undefined, // Vil bli satt ved prisoppdatering
+        price_provider: (productData as any)?.provider || 'manual',
+        last_price_check: new Date().toISOString(),
+        price_drop_notification_sent: false,
         image_url: productData?.image || undefined,
-        store_name: productData?.siteName || undefined,
+        store_name: (productData as any)?.store_name || productData?.siteName || undefined,
         is_purchased: false,
       }
 
@@ -118,7 +132,7 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
   }
 
   const handleClose = () => {
-    setStep('url')
+    setStep('input')
     setUrl('')
     setProductData(null)
     setSelectedGroupId(groupId || null)
@@ -127,7 +141,7 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
   }
 
   const handleBack = () => {
-    setStep('url')
+    setStep('input')
     setProductData(null)
   }
 
@@ -154,57 +168,149 @@ export default function AddWishModal({ isOpen, onClose, groupId, onSuccess }: Ad
                 Legg til ønske
               </h2>
               <p className="text-gray-600 mt-2">
-                {step === 'url' 
-                  ? 'Lim inn lenke til produktet du ønsker deg' 
+                {step === 'input' 
+                  ? 'Velg hvordan du vil legge til ønsket' 
                   : 'Sjekk og juster informasjonen'
                 }
               </p>
             </div>
 
-            {step === 'url' ? (
-              <form onSubmit={handleUrlSubmit} className="space-y-4">
-                <div className="relative">
-                  <Link className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                  <input
-                    type="url"
-                    placeholder="https://www.elkjop.no/produkt/..."
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
-                    required
-                  />
+            {step === 'input' ? (
+              <div className="space-y-4">
+                {/* Input Type Selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setInputType('url')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      inputType === 'url' 
+                        ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <Link className="mx-auto mb-2" size={24} />
+                    <p className="font-medium">Fra lenke</p>
+                    <p className="text-xs text-gray-500">Hent automatisk</p>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => setInputType('manual')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      inputType === 'manual' 
+                        ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <Gift className="mx-auto mb-2" size={24} />
+                    <p className="font-medium">Manuelt</p>
+                    <p className="text-xs text-gray-500">Skriv selv</p>
+                  </button>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="text-blue-500 mt-0.5" size={20} />
-                    <div>
-                      <h4 className="font-medium text-blue-900 mb-1">Støttede nettsteder</h4>
-                      <p className="text-sm text-blue-700">
-                        Elkjøp, Komplett, Power, Expert, Eplehuset, Amazon og flere
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || !url.trim()}
-                  className="w-full bg-gradient-to-r from-christmas-red to-red-600 text-white py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? (
+                <form onSubmit={handleInputSubmit} className="space-y-4">
+                  {inputType === 'url' ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      Henter produktinfo...
+                      <div className="relative">
+                        <Link className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                          type="url"
+                          placeholder="https://www.elkjop.no/produkt/..."
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
+                          required
+                        />
+                      </div>
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="text-blue-500 mt-0.5" size={20} />
+                          <div>
+                            <h4 className="font-medium text-blue-900 mb-1">Støttede nettsteder</h4>
+                            <p className="text-sm text-blue-700">
+                              Elkjøp, Komplett, Power, Expert, Eplehuset, Amazon og flere
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </>
                   ) : (
-                    <>
-                      <Search size={20} />
-                      Hent produktinfo
-                    </>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Navn på gave *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="F.eks. iPhone 15 Pro"
+                          value={formData.title}
+                          onChange={(e) => setFormData({...formData, title: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Beskrivelse
+                        </label>
+                        <textarea
+                          placeholder="Beskrivelse av ønsket..."
+                          value={formData.description}
+                          onChange={(e) => setFormData({...formData, description: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
+                          rows={3}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Pris (kr)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="F.eks. 1299"
+                          value={formData.price}
+                          onChange={(e) => setFormData({...formData, price: e.target.value})}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Lenke (valgfritt)
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="https://www.elkjop.no/produkt/..."
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-christmas-red focus:border-transparent"
+                        />
+                      </div>
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  <button
+                    type="submit"
+                    disabled={loading || (inputType === 'url' ? !url.trim() : !formData.title.trim())}
+                    className="w-full bg-gradient-to-r from-christmas-red to-red-600 text-white py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                        Henter produktinfo...
+                      </>
+                    ) : (
+                      <>
+                        <Search size={20} />
+                        {inputType === 'url' ? 'Hent produktinfo' : 'Fortsett'}
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
             ) : (
               <form onSubmit={handleSave} className="space-y-4">
                 {/* Produktforhandsvisning */}

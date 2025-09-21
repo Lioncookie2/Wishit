@@ -19,8 +19,8 @@ export const database = {
 
   async updateProfile(userId: string, updates: Partial<User>) {
     // @ts-ignore - Supabase type issues with profiles table
-    const { data, error } = await supabase
-      .from('profiles')
+    const { data, error } = await (supabase
+      .from('profiles') as any)
       .update(updates)
       .eq('id', userId)
       .select()
@@ -30,21 +30,32 @@ export const database = {
   },
 
   // Gruppe operasjoner - forenklet query
-  async getUserGroups(userId: string) {
+  async getUserGroups() {
+    console.log('🔍 getUserGroups called')
+    
     // Først sjekk at brukeren er autentisert
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('🔍 Auth check result:', { user: user?.id, authError })
+    
     if (authError || !user) {
-      console.error('Auth error in getUserGroups:', authError)
+      console.error('❌ Auth error in getUserGroups:', authError)
       return { data: null, error: new Error('Ingen innlogget bruker – kan ikke hente grupper') }
     }
 
+    const userId = user.id
+    console.log('🔍 User ID:', userId)
+
     // Først hent grupper hvor brukeren er admin
+    console.log('🔍 Fetching admin groups...')
     const { data: adminGroups, error: adminError } = await supabase
       .from('groups')
       .select('*')
       .eq('admin_id', userId)
+    
+    console.log('🔍 Admin groups result:', { adminGroups, adminError })
 
     // Så hent grupper hvor brukeren er medlem
+    console.log('🔍 Fetching member groups...')
     const { data: memberGroups, error: memberError } = await supabase
       .from('group_members')
       .select(`
@@ -52,6 +63,8 @@ export const database = {
         groups:group_id (*)
       `)
       .eq('user_id', userId)
+    
+    console.log('🔍 Member groups result:', { memberGroups, memberError })
 
     if (adminError || memberError) {
       console.error('Database error getUserGroups:', adminError || memberError)
@@ -64,8 +77,8 @@ export const database = {
 
     // Kombiner resultatene og fjern duplikater
     const allGroups = [
-      ...(adminGroups || []).map(group => ({ ...group, role: 'admin' })),
-      ...(memberGroups || []).map(item => ({ ...item.groups, role: item.role }))
+      ...(adminGroups || []).map((group: any) => ({ ...group, role: 'admin' })),
+      ...(memberGroups || []).map((item: any) => ({ ...item.groups, role: item.role }))
     ]
 
     // Fjern duplikater basert på id, prioriter admin-rollen
@@ -126,16 +139,16 @@ export const database = {
       join_code: joinCode
     }
 
-    const { data, error } = await supabase
-      .from('groups')
+    const { data, error } = await (supabase
+      .from('groups') as any)
       .insert(groupWithCode)
       .select()
       .single()
 
     if (data && !error) {
       // Legg til admin som medlem
-      const { error: memberError } = await supabase
-        .from('group_members')
+      const { error: memberError } = await (supabase
+        .from('group_members') as any)
         .insert({
           group_id: data.id,
           user_id: group.admin_id,
@@ -173,7 +186,7 @@ export const database = {
     // Sjekk om profil-data mangler og prøv å opprette profil
     if (data) {
       for (const member of data) {
-        if (!member.profiles) {
+        if (!(member as any).profiles) {
           console.log('Missing profile for user:', member.user_id)
           
           // Prøv å opprette profil for brukeren
@@ -212,6 +225,9 @@ export const database = {
             }
           }
         }
+        
+        // Konverter profiles til profile for konsistens med GroupMember interface
+        member.profile = member.profiles
       }
     }
 
@@ -396,6 +412,11 @@ export const database = {
       .eq('group_id', groupId)
       .order('created_at', { ascending: false })
 
+    if (error) {
+      console.error('Error fetching group wishlists:', error)
+      return { data: null, error }
+    }
+
     return { data, error }
   },
 
@@ -433,6 +454,63 @@ export const database = {
     return { data, error }
   },
 
+  async contributeToPurchase(wishlistId: string, userId: string, amount: number, comment?: string) {
+    // Hent brukerens navn
+    const { data: userData } = await supabase
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', userId)
+      .single()
+
+    const userName = userData?.full_name || userData?.email || 'Ukjent bruker'
+
+    // Hent eksisterende bidrag
+    const { data: wishlistData } = await supabase
+      .from('wishlists')
+      .select('contributions, total_contributed, current_price, price')
+      .eq('id', wishlistId)
+      .single()
+
+    let contributions = []
+    if (wishlistData?.contributions) {
+      try {
+        contributions = typeof wishlistData.contributions === 'string' 
+          ? JSON.parse(wishlistData.contributions) 
+          : wishlistData.contributions
+      } catch (error) {
+        console.error('Error parsing contributions:', error)
+        contributions = []
+      }
+    }
+
+    // Legg til nytt bidrag
+    const newContribution = {
+      userId,
+      amount,
+      comment: comment || '',
+      userName,
+      createdAt: new Date().toISOString()
+    }
+
+    contributions.push(newContribution)
+    const newTotalContributed = (wishlistData?.total_contributed || 0) + amount
+    const currentPrice = wishlistData?.current_price || wishlistData?.price || 0
+    const isFullyFunded = newTotalContributed >= currentPrice
+
+    // Oppdater ønsket
+    const { data, error } = await supabase
+      .from('wishlists')
+      .update({
+        contributions: JSON.stringify(contributions),
+        total_contributed: newTotalContributed,
+        is_fully_funded: isFullyFunded
+      })
+      .eq('id', wishlistId)
+      .select()
+
+    return { data, error }
+  },
+
   async deleteWishlistItem(itemId: string) {
     const { error } = await supabase
       .from('wishlists')
@@ -440,6 +518,24 @@ export const database = {
       .eq('id', itemId)
 
     return { error }
+  },
+
+  async getUserWishlistItems() {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return { data: null, error: new Error('Ikke autentisert') }
+    }
+
+    const { data, error } = await supabase
+      .from('wishlists')
+      .select(`
+        *,
+        profiles:user_id (full_name, email, avatar_url)
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    return { data, error }
   },
 
   async markAsPurchased(itemId: string, purchasedBy: string, comment?: string) {
@@ -565,6 +661,8 @@ export const database = {
 
   // Gruppedetaljer
   async getGroupDetails(groupId: string) {
+    console.log('🔍 getGroupDetails called with groupId:', groupId)
+    
     const { data, error } = await supabase
       .from('groups')
       .select(`
@@ -574,8 +672,11 @@ export const database = {
       .eq('id', groupId)
       .single()
 
+    console.log('🔍 getGroupDetails result:', { data, error })
+
     if (data) {
       data.admin_name = data.profiles?.full_name || data.profiles?.email
+      console.log('🔍 Processed group data:', data)
     }
 
     return { data, error }
@@ -722,7 +823,7 @@ export const database = {
   },
 
   // Secret Santa funksjoner
-  async createSecretSantaDraw(groupId: string) {
+  async createSecretSantaDraw(groupId: string, budget: number = 500) {
     // Hent alle gruppemedlemmer
     const { data: members, error: membersError } = await supabase
       .from('group_members')
@@ -746,6 +847,7 @@ export const database = {
         group_id: groupId,
         giver_id: giver,
         receiver_id: receiver,
+        budget: budget,
         created_at: new Date().toISOString()
       })
     }
@@ -778,14 +880,15 @@ export const database = {
         `)
         .eq('group_id', groupId)
         .eq('giver_id', userId)
-        .single()
+        .maybeSingle() // Bruk maybeSingle() i stedet for single()
 
       // Hvis ingen data funnet, returner null uten feil
-      if (error && error.code === 'PGRST116') {
+      if (error) {
+        console.error('Error fetching secret santa target:', error)
         return { data: null, error: null }
       }
 
-      return { data, error }
+      return { data, error: null }
     } catch (error) {
       // Hvis tabellen ikke eksisterer eller andre feil, returner null
       return { data: null, error: null }
