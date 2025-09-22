@@ -3,6 +3,15 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET() {
   try {
+    // Sjekk om miljøvariabler er satt
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json({
+        success: false,
+        error: 'Supabase ikke konfigurert',
+        message: 'Miljøvariabler mangler'
+      }, { status: 500 })
+    }
+
     // Test med service role key for å omgå RLS
     const { data, error } = await supabase
       .from('wishlists')
