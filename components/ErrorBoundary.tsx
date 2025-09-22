@@ -35,7 +35,8 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-gray-600 mb-4">Det oppstod en feil i appen.</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+              aria-label="Last siden på nytt for å prøve å løse feilen"
             >
               Last siden på nytt
             </button>

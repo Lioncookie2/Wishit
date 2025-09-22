@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProductMetadata } from '@/types'
+import { scrapingRateLimiter, getRateLimitHeaders } from '@/lib/rate-limiter'
+import { productCache, CacheKeys } from '@/lib/cache'
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
@@ -159,6 +161,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Rate limiting
+    const clientIP = request.ip || request.headers.get('x-forwarded-for') || 'unknown'
+    if (!scrapingRateLimiter.isAllowed(clientIP)) {
+      return NextResponse.json(
+        { error: 'For mange forespørsler. Prøv igjen senere.' },
+        { 
+          status: 429,
+          headers: getRateLimitHeaders(clientIP, scrapingRateLimiter)
+        }
+      )
+    }
+
+    // Sjekk cache først
+    const cacheKey = CacheKeys.PRODUCT(url)
+    const cachedData = productCache.get(cacheKey)
+    if (cachedData) {
+      return NextResponse.json(cachedData, {
+        headers: {
+          'X-Cache': 'HIT',
+          ...getRateLimitHeaders(clientIP, scrapingRateLimiter)
+        }
+      })
+    }
+
     // Støttede domener
     const supportedDomains = [
       'elkjop.no',
@@ -183,17 +209,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Hent siden
-    const response = await fetchWithRetry(url)
-    const html = await response.text()
+    // Hent siden med feilhåndtering
+    let response: Response
+    let html: string
+    
+    try {
+      response = await fetchWithRetry(url)
+      html = await response.text()
+    } catch (error) {
+      console.error('Scraping fetch error:', error)
+      return NextResponse.json(
+        { error: 'Kunne ikke hente produktinformasjon. Nettstedet kan være utilgjengelig eller blokkere forespørsler.' },
+        { 
+          status: 503,
+          headers: getRateLimitHeaders(clientIP, scrapingRateLimiter)
+        }
+      )
+    }
 
     // Trekk ut metadata
     const metadata = extractMetadata(html, url)
 
     if (!metadata.title) {
       return NextResponse.json(
-        { error: 'Kunne ikke finne produktinformasjon' },
-        { status: 400 }
+        { error: 'Kunne ikke finne produktinformasjon på denne siden' },
+        { 
+          status: 400,
+          headers: getRateLimitHeaders(clientIP, scrapingRateLimiter)
+        }
       )
     }
 
@@ -207,13 +250,25 @@ export async function POST(request: NextRequest) {
       provider: 'scraper', // Internt navn som ikke vises til brukeren
     }
 
-    return NextResponse.json(responseData)
+    // Cache resultatet
+    productCache.set(cacheKey, responseData, 600000) // 10 minutter
+
+    return NextResponse.json(responseData, {
+      headers: {
+        'X-Cache': 'MISS',
+        ...getRateLimitHeaders(clientIP, scrapingRateLimiter)
+      }
+    })
 
   } catch (error) {
     console.error('Scraping error:', error)
+    const clientIP = request.ip || request.headers.get('x-forwarded-for') || 'unknown'
     return NextResponse.json(
-      { error: 'Kunne ikke hente produktinformasjon' },
-      { status: 500 }
+      { error: 'En uventet feil oppstod ved henting av produktinformasjon' },
+      { 
+        status: 500,
+        headers: getRateLimitHeaders(clientIP, scrapingRateLimiter)
+      }
     )
   }
 }

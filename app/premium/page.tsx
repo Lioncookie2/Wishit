@@ -2,15 +2,95 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Crown, Check, Star, Gift, DollarSign, Users, Sparkles, Lock, Zap } from 'lucide-react'
+import { Crown, Check, Star, Gift, DollarSign, Users, Sparkles, Lock, Zap, Apple } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { database } from '@/lib/database'
 import toast from 'react-hot-toast'
+import { Purchases } from '@revenuecat/purchases-capacitor'
 
 export default function PremiumPage() {
   const { user, isPremium, updatePremiumStatus } = useAuth()
+  const prefersReducedMotion = useReducedMotion()
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
+  const [products, setProducts] = useState<any[]>([])
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [isNative, setIsNative] = useState(false)
+
+  // Initialiser RevenueCat
+  useEffect(() => {
+    const initializeRevenueCat = async () => {
+      try {
+        // Sjekk om vi er i en native app (iOS/Android)
+        const isNativeApp = typeof window !== 'undefined' && 
+          (window.navigator.userAgent.includes('Capacitor') || 
+           window.navigator.userAgent.includes('iOS') || 
+           window.navigator.userAgent.includes('Android'))
+        
+        setIsNative(isNativeApp)
+        
+        if (isNativeApp) {
+          // Initialiser RevenueCat for native app
+          await Purchases.configure({
+            apiKey: process.env.NEXT_PUBLIC_REVENUECAT_API_KEY || 'your_revenuecat_api_key'
+          })
+          
+          // Hent produkter
+          const offerings = await Purchases.getOfferings()
+          if (offerings.current) {
+            setProducts(offerings.current.availablePackages)
+          }
+        }
+        
+        setIsInitialized(true)
+      } catch (error) {
+        console.error('Error initializing RevenueCat:', error)
+        setIsInitialized(true)
+      }
+    }
+
+    initializeRevenueCat()
+  }, [])
+
+  const handlePurchase = async (packageToPurchase: any) => {
+    if (!isNative || !user) {
+      toast.error('In-app kjøp er kun tilgjengelig i mobilappen')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { customerInfo } = await Purchases.purchasePackage(packageToPurchase)
+      
+      if (customerInfo.entitlements.active['premium']) {
+        // Oppdater premium-status i Supabase
+        await fetch('/api/premium/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await import('@/lib/supabase')).supabase.auth.getSession().then(s => s.data.session?.access_token)}`
+          },
+          body: JSON.stringify({
+            isPremium: true,
+            transactionId: customerInfo.originalPurchaseDate
+          })
+        })
+        
+        updatePremiumStatus(true)
+        toast.success('🎉 Gratulerer! Du er nå Premium-medlem!')
+      }
+    } catch (error: any) {
+      if (error.code === 'PURCHASES_ERROR_PURCHASE_CANCELLED') {
+        toast.error('Kjøpet ble avbrutt')
+      } else {
+        console.error('Purchase error:', error)
+        toast.error('Noe gikk galt ved kjøp. Prøv igjen.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleRedeem = async () => {
     if (code !== 'Premium2025') {
@@ -108,8 +188,9 @@ export default function PremiumPage() {
         {isPremium ? (
           /* Premium Status */
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={prefersReducedMotion ? {} : { opacity: 0, y: 20 }}
+            animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.3 }}
             className="space-y-6"
           >
             {/* Premium Badge */}
@@ -129,9 +210,9 @@ export default function PremiumPage() {
               {premiumFeatures.map((feature, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  initial={prefersReducedMotion ? {} : { opacity: 0, x: -20 }}
+                  animate={prefersReducedMotion ? {} : { opacity: 1, x: 0 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { delay: index * 0.1 }}
                   className={`${feature.color} border rounded-xl p-4 flex items-center gap-4`}
                 >
                   {feature.icon}
@@ -147,8 +228,9 @@ export default function PremiumPage() {
         ) : (
           /* Upgrade to Premium */
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={prefersReducedMotion ? {} : { opacity: 0, y: 20 }}
+            animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.3 }}
             className="space-y-6"
           >
             {/* Hero Section */}
@@ -169,9 +251,9 @@ export default function PremiumPage() {
               {premiumFeatures.map((feature, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  initial={prefersReducedMotion ? {} : { opacity: 0, y: 20 }}
+                  animate={prefersReducedMotion ? {} : { opacity: 1, y: 0 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { delay: index * 0.1 }}
                   className={`${feature.color} border rounded-xl p-4`}
                 >
                   <div className="flex items-start gap-3">
@@ -193,23 +275,71 @@ export default function PremiumPage() {
             <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
               <div className="text-center mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Premium Plan</h3>
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-4xl font-bold text-gray-900">Gratis</span>
-                  <span className="text-gray-500 line-through">99 kr/måned</span>
-                </div>
+                {isNative && products.length > 0 ? (
+                  <div className="space-y-2">
+                    {products.map((product, index) => (
+                      <div key={index} className="flex items-center justify-center gap-2">
+                        <span className="text-3xl font-bold text-gray-900">
+                          {product.storeProduct.priceString}
+                        </span>
+                        <span className="text-gray-600">
+                          {product.storeProduct.subscriptionPeriod}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-4xl font-bold text-gray-900">Gratis</span>
+                    <span className="text-gray-500 line-through">99 kr/måned</span>
+                  </div>
+                )}
                 <p className="text-gray-600 mt-2">
-                  Spesialtilbud: Gratis med kupongkode!
+                  {isNative ? 'Kjøp direkte i appen' : 'Spesialtilbud: Gratis med kupongkode!'}
                 </p>
               </div>
 
-              {/* Purchase Button (Disabled) */}
-              <button
-                disabled
-                className="w-full bg-gray-300 text-gray-500 py-4 rounded-xl font-semibold text-lg mb-6 cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <Lock size={20} />
-                Kjøp Premium (kommer snart)
-              </button>
+              {/* Native Purchase Buttons */}
+              {isNative && isInitialized && products.length > 0 ? (
+                <div className="space-y-3 mb-6">
+                  {products.map((product, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handlePurchase(product)}
+                      disabled={loading}
+                      className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-4 rounded-xl font-semibold text-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Kjøper...
+                        </>
+                      ) : (
+                        <>
+                          <Apple size={20} />
+                          Kjøp {product.storeProduct.title}
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : isNative ? (
+                <button
+                  disabled
+                  className="w-full bg-gray-300 text-gray-500 py-4 rounded-xl font-semibold text-lg mb-6 cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Lock size={20} />
+                  Laster produkter...
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="w-full bg-gray-300 text-gray-500 py-4 rounded-xl font-semibold text-lg mb-6 cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Lock size={20} />
+                  Kjøp Premium (kun i mobilappen)
+                </button>
+              )}
 
               {/* Coupon Code */}
               <div className="border-t border-gray-200 pt-6">

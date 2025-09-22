@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, User, Camera, Trash2, Settings, Bell, Mail, Shield, Palette } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { database } from '@/lib/database'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -16,6 +17,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsModalProps) {
   const { user } = useAuth()
+  const prefersReducedMotion = useReducedMotion()
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'privacy'>('profile')
@@ -176,14 +178,16 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={prefersReducedMotion ? {} : { scale: 0.9, opacity: 0 }}
+            animate={prefersReducedMotion ? {} : { scale: 1, opacity: 1 }}
+            exit={prefersReducedMotion ? {} : { scale: 0.9, opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
             className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-2xl relative max-h-[95vh] overflow-y-auto mx-2 sm:mx-0"
           >
             <button
               onClick={onClose}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
+              aria-label="Lukk innstillinger"
             >
               <X size={24} />
             </button>
@@ -266,11 +270,12 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
                   {/* Upload knapper */}
                   <div className="flex gap-3">
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={prefersReducedMotion ? {} : { scale: 1.05 }}
+                      whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
                       onClick={handleUploadClick}
                       disabled={uploading}
                       className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                      aria-label="Last opp profilbilde"
                     >
                       {uploading ? (
                         <>
@@ -287,11 +292,12 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
 
                     {user?.user_metadata?.avatar_url && (
                       <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileHover={prefersReducedMotion ? {} : { scale: 1.05 }}
+                        whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
                         onClick={handleRemoveAvatar}
                         disabled={loading}
                         className="bg-red-100 text-red-600 px-4 py-2 rounded-lg font-semibold hover:bg-red-200 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        aria-label="Fjern profilbilde"
                       >
                         <Trash2 size={16} />
                         Fjern
@@ -415,6 +421,9 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
                           className={`w-12 h-6 rounded-full relative transition-colors ${
                             notifications.push ? 'bg-blue-500' : 'bg-gray-300'
                           }`}
+                          aria-label={`${notifications.push ? 'Deaktiver' : 'Aktiver'} push-varsler`}
+                          role="switch"
+                          aria-checked={notifications.push}
                         >
                           <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
                             notifications.push ? 'right-0.5' : 'left-0.5'
@@ -431,6 +440,9 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
                           className={`w-12 h-6 rounded-full relative transition-colors ${
                             notifications.email ? 'bg-blue-500' : 'bg-gray-300'
                           }`}
+                          aria-label={`${notifications.email ? 'Deaktiver' : 'Aktiver'} e-post varsler`}
+                          role="switch"
+                          aria-checked={notifications.email}
                         >
                           <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
                             notifications.email ? 'right-0.5' : 'left-0.5'
@@ -508,7 +520,13 @@ export default function SettingsModal({ isOpen, onClose, onSuccess }: SettingsMo
                     <p className="text-sm text-red-700 mb-4">
                       Disse handlingene kan ikke angres
                     </p>
-                    <button className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors">
+                    <button 
+                      onClick={() => {
+                        onClose()
+                        window.location.href = '/settings/account'
+                      }}
+                      className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                    >
                       Slett konto
                     </button>
                   </div>

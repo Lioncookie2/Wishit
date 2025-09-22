@@ -5,6 +5,7 @@ import { AuthProvider } from '@/hooks/useAuth'
 import { Toaster } from 'react-hot-toast'
 import ConditionalNavigation from '@/components/ConditionalNavigation'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import NotificationInitializer from '@/components/NotificationInitializer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -52,6 +53,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ErrorBoundary>
           <AuthProvider>
+            <NotificationInitializer />
             <ConditionalNavigation>
               {children}
             </ConditionalNavigation>
