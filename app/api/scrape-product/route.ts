@@ -30,6 +30,28 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   throw new Error('Failed to fetch after retries')
 }
 
+function extractPriceFromPatterns(html: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
+    const matches = Array.from(html.matchAll(pattern))
+    for (const match of matches) {
+      let priceStr = match[1]
+      if (priceStr) {
+        // Rydd opp i pristekst
+        priceStr = priceStr
+          .replace(/[^\d,.-]/g, '') // Fjern alt som ikke er tall, komma, punktum eller bindestrek
+          .replace(/,/g, '.') // Konverter komma til punktum
+          .replace(/\.(?=\d*\.)/g, '') // Fjern alle punktum unntatt det siste (for tusen-separator)
+        
+        const price = parseFloat(priceStr)
+        if (price > 0 && price < 1000000) { // Rimelig prisrange
+          return price
+        }
+      }
+    }
+  }
+  return undefined
+}
+
 function extractMetadata(html: string, url: string): ProductMetadata {
   const metadata: ProductMetadata = {
     title: '',
@@ -66,74 +88,145 @@ function extractMetadata(html: string, url: string): ProductMetadata {
   // Sett nettstedsnavn
   metadata.siteName = ogSiteName?.[1] || ''
 
-  // Spesifikke prisextraksjoner for norske butikker
+  // Avanserte prisextraksjoner for alle nettsider
   const hostname = new URL(url).hostname.toLowerCase()
   
-  if (hostname.includes('elkjop.no')) {
-    // Elkjøp spesifikke patterns
-    const elkjøpPrice = html.match(/<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                       html.match(/"price":\s*"([^"]+)"/i) ||
-                       html.match(/data-price="([^"]+)"/i)
-    if (elkjøpPrice) {
-      const priceStr = elkjøpPrice[1].replace(/[^\d,]/g, '').replace(',', '.')
-      const price = parseFloat(priceStr)
-      if (price > 0) metadata.price = price
-    }
-  } else if (hostname.includes('komplett.no')) {
-    // Komplett spesifikke patterns
-    const komplettPrice = html.match(/<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                         html.match(/"price":\s*"([^"]+)"/i) ||
-                         html.match(/data-testid="price"[^>]*>([^<]+)</i)
-    if (komplettPrice) {
-      const priceStr = komplettPrice[1].replace(/[^\d,]/g, '').replace(',', '.')
-      const price = parseFloat(priceStr)
-      if (price > 0) metadata.price = price
-    }
-  } else if (hostname.includes('power.no')) {
-    // Power spesifikke patterns
-    const powerPrice = html.match(/<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i) ||
-                      html.match(/"price":\s*"([^"]+)"/i) ||
-                      html.match(/data-price="([^"]+)"/i)
-    if (powerPrice) {
-      const priceStr = powerPrice[1].replace(/[^\d,]/g, '').replace(',', '.')
-      const price = parseFloat(priceStr)
-      if (price > 0) metadata.price = price
-    }
-  } else {
-    // Generelle prispatterns
-    const pricePatterns = [
-      /(?:kr|kroner|price["\'][^>]*>|pris["\'][^>]*>)[\s]*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})?)/gi,
-      /([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})?)[\s]*(?:kr|kroner)/gi,
-      /"price":\s*"?([0-9]+(?:\.[0-9]{2})?)"?/gi,
-      /data-price["\'][^>]*["\']([0-9]+(?:\.[0-9]{2})?)["\']/gi,
-    ]
-
-    for (const pattern of pricePatterns) {
-      const matches = Array.from(html.matchAll(pattern))
-      for (const match of matches) {
-        let priceStr = match[1]
-        if (priceStr) {
-          priceStr = priceStr.replace(/[\s.]/g, '').replace(',', '.')
-          const price = parseFloat(priceStr)
-          if (price > 0 && price < 1000000) {
-            metadata.price = price
-            break
-          }
-        }
+  // Først prøv JSON-LD structured data
+  const jsonLdMatch = html.match(/<script[^>]*type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/is)
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1])
+      if (jsonLd.offers?.price) {
+        const price = parseFloat(jsonLd.offers.price)
+        if (price > 0) metadata.price = price
       }
-      if (metadata.price) break
+    } catch (e) {
+      // Ignore JSON parse errors
     }
   }
 
-  // Bestem butikknavn fra URL
+  // Hvis ikke funnet i JSON-LD, prøv spesifikke patterns per nettsted
+  if (!metadata.price) {
+    if (hostname.includes('elkjop.no')) {
+      const elkjøpPatterns = [
+        /<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /"price":\s*"([^"]+)"/i,
+        /data-price="([^"]+)"/i,
+        /<meta[^>]*property="product:price:amount"[^>]*content="([^"]+)"/i
+      ]
+      metadata.price = extractPriceFromPatterns(html, elkjøpPatterns)
+    } else if (hostname.includes('komplett.no')) {
+      const komplettPatterns = [
+        /<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /"price":\s*"([^"]+)"/i,
+        /data-testid="price"[^>]*>([^<]+)</i,
+        /<meta[^>]*property="product:price:amount"[^>]*content="([^"]+)"/i
+      ]
+      metadata.price = extractPriceFromPatterns(html, komplettPatterns)
+    } else if (hostname.includes('power.no')) {
+      const powerPatterns = [
+        /<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /"price":\s*"([^"]+)"/i,
+        /data-price="([^"]+)"/i,
+        /<meta[^>]*property="product:price:amount"[^>]*content="([^"]+)"/i
+      ]
+      metadata.price = extractPriceFromPatterns(html, powerPatterns)
+    } else if (hostname.includes('amazon')) {
+      const amazonPatterns = [
+        /<span[^>]*class="[^"]*a-price-whole[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<span[^>]*id="priceblock_dealprice"[^>]*>([^<]+)<\/span>/i,
+        /<span[^>]*id="priceblock_ourprice"[^>]*>([^<]+)<\/span>/i,
+        /"price":\s*"([^"]+)"/i
+      ]
+      metadata.price = extractPriceFromPatterns(html, amazonPatterns)
+    } else {
+      // Generelle prispatterns for alle andre nettsider
+      const generalPatterns = [
+        // JSON-LD patterns
+        /"price":\s*"?([0-9]+(?:\.[0-9]{2})?)"?/gi,
+        /"offers":\s*\{[^}]*"price":\s*"?([0-9]+(?:\.[0-9]{2})?)"?/gi,
+        
+        // Meta tag patterns
+        /<meta[^>]*property="product:price:amount"[^>]*content="([^"]+)"/i,
+        /<meta[^>]*name="price"[^>]*content="([^"]+)"/i,
+        
+        // HTML patterns
+        /<span[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/span>/i,
+        /<div[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/div>/i,
+        /<p[^>]*class="[^"]*price[^"]*"[^>]*>([^<]+)<\/p>/i,
+        
+        // Data attribute patterns
+        /data-price["\'][^>]*["\']([0-9]+(?:\.[0-9]{2})?)["\']/gi,
+        /data-testid="price"[^>]*>([^<]+)</i,
+        
+        // Norske valuta patterns
+        /(?:kr|kroner|price["\'][^>]*>|pris["\'][^>]*>)[\s]*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})?)/gi,
+        /([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})?)[\s]*(?:kr|kroner)/gi,
+        
+        // Generelle valuta patterns
+        /(?:€|EUR|USD|\$|£|GBP)[\s]*([0-9]+(?:\.[0-9]{2})?)/gi,
+        /([0-9]+(?:\.[0-9]{2})?)[\s]*(?:€|EUR|USD|\$|£|GBP)/gi,
+        
+        // Numeriske patterns
+        /([0-9]{1,3}(?:[,\s][0-9]{3})*(?:\.[0-9]{2})?)/g
+      ]
+      
+      metadata.price = extractPriceFromPatterns(html, generalPatterns)
+    }
+  }
+
+  // Bestem butikknavn fra URL eller Open Graph
   if (!metadata.siteName) {
-    if (hostname.includes('elkjop.no')) metadata.siteName = 'Elkjøp'
-    else if (hostname.includes('komplett.no')) metadata.siteName = 'Komplett'
-    else if (hostname.includes('power.no')) metadata.siteName = 'Power'
-    else if (hostname.includes('expert.no')) metadata.siteName = 'Expert'
-    else if (hostname.includes('eplehuset.no')) metadata.siteName = 'Eplehuset'
-    else if (hostname.includes('amazon')) metadata.siteName = 'Amazon'
-    else metadata.siteName = hostname
+    const knownStores: { [key: string]: string } = {
+      'elkjop.no': 'Elkjøp',
+      'komplett.no': 'Komplett',
+      'power.no': 'Power',
+      'expert.no': 'Expert',
+      'eplehuset.no': 'Eplehuset',
+      'amazon.com': 'Amazon',
+      'amazon.no': 'Amazon',
+      'amazon.co.uk': 'Amazon UK',
+      'amazon.de': 'Amazon DE',
+      'prisguiden.no': 'Prisguiden',
+      'prisjakt.no': 'Prisjakt',
+      'finn.no': 'Finn.no',
+      'hygglo.no': 'Hygglo',
+      'ikea.com': 'IKEA',
+      'ikea.no': 'IKEA',
+      'clasohlson.no': 'Clas Ohlson',
+      'xxl.no': 'XXL',
+      'sport1.no': 'Sport1',
+      'g-sport.no': 'G-Sport',
+      'hifiklubben.no': 'Hifiklubben',
+      'cdon.no': 'CDON',
+      'netonnet.no': 'NetOnNet',
+      'dustin.no': 'Dustin',
+      'proshop.no': 'Proshop',
+      'maxgaming.no': 'MaxGaming',
+      'komplett.no': 'Komplett',
+      'coolshop.no': 'Coolshop',
+      'zara.com': 'Zara',
+      'h&m.com': 'H&M',
+      'hm.com': 'H&M',
+      'zalando.no': 'Zalando',
+      'zalando.com': 'Zalando',
+      'asos.com': 'ASOS',
+      'boozt.com': 'Boozt',
+      'boozt.no': 'Boozt'
+    }
+
+    // Sjekk kjente butikker
+    for (const [domain, storeName] of Object.entries(knownStores)) {
+      if (hostname.includes(domain)) {
+        metadata.siteName = storeName
+        break
+      }
+    }
+
+    // Hvis ikke funnet, bruk hostname
+    if (!metadata.siteName) {
+      metadata.siteName = hostname.replace('www.', '')
+    }
   }
 
   return metadata
@@ -185,26 +278,15 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Støttede domener
-    const supportedDomains = [
-      'elkjop.no',
-      'komplett.no',
-      'power.no',
-      'expert.no',
-      'eplehuset.no',
-      'amazon.com',
-      'amazon.no',
-      'prisguiden.no',
-      'prisjakt.no',
-    ]
-
-    const isSupported = supportedDomains.some(domain => 
-      validUrl.hostname.includes(domain)
+    // Sjekk at URL er gyldig og ikke er en fil eller ugyldig type
+    const invalidExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mp3', '.zip', '.exe']
+    const hasInvalidExtension = invalidExtensions.some(ext => 
+      validUrl.pathname.toLowerCase().endsWith(ext)
     )
 
-    if (!isSupported) {
+    if (hasInvalidExtension) {
       return NextResponse.json(
-        { error: 'Nettstedet støttes ikke ennå' },
+        { error: 'Denne filtypen støttes ikke. Vennligst bruk en produkt-URL.' },
         { status: 400 }
       )
     }

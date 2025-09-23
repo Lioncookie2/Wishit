@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
       const wishlistItem = wishlist as any
       try {
         // Hent ny pris fra URL
-        const response = await fetch('/api/scrape-product', {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const response = await fetch(`${baseUrl}/api/scrape-product`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

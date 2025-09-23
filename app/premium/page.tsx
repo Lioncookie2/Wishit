@@ -93,22 +93,37 @@ export default function PremiumPage() {
   }
 
   const handleRedeem = async () => {
-    if (code !== 'Premium2025') {
-      toast.error('Ugyldig kupongkode')
+    if (!code.trim()) {
+      toast.error('Vennligst skriv inn en kupongkode')
       return
     }
 
     setLoading(true)
     try {
-      // Simuler oppgradering til Premium
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const response = await fetch('/api/premium/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isPremium: true,
+          couponCode: code.trim(),
+          transactionId: `coupon_${Date.now()}`,
+          userId: user?.id
+        })
+      })
+
+      const data = await response.json()
       
-      // I en ekte app ville du oppdatere brukerens premium-status i databasen
-      // await database.updateUserPremium(user.id, true)
-      
-      updatePremiumStatus(true)
-      toast.success('🎉 Gratulerer! Du er nå Premium-medlem!')
+      if (response.ok) {
+        updatePremiumStatus(true)
+        toast.success('🎉 Gratulerer! Du er nå Premium-medlem!')
+        setCode('') // Clear the code input
+      } else {
+        toast.error(data.error || 'Ugyldig kupongkode')
+      }
     } catch (error) {
+      console.error('Error redeeming coupon:', error)
       toast.error('Noe gikk galt ved oppgradering')
     } finally {
       setLoading(false)
@@ -373,7 +388,7 @@ export default function PremiumPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 text-center mt-3">
-                  Prøv koden: <span className="font-mono font-semibold">Premium2025</span>
+                  Gyldige koder: <span className="font-mono font-semibold">Premium2025</span>, <span className="font-mono font-semibold">Wishit2025</span>, <span className="font-mono font-semibold">Test123</span>
                 </p>
               </div>
             </div>

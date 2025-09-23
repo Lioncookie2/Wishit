@@ -44,9 +44,32 @@ export async function POST(request: NextRequest) {
         const priceDifference = priceDropItem.previous_price - priceDropItem.current_price
         const percentageDrop = Math.round((priceDifference / priceDropItem.previous_price) * 100)
 
-        // Her ville du normalt sende push-varsel via FCM, OneSignal, etc.
-        // For nå logger vi bare til konsollen
-        console.log(`🔔 Prisfall-varsel: "${priceDropItem.title}"`)
+        // Opprett notifikasjon i databasen
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: priceDropItem.user_id,
+            type: 'price_drop',
+            title: 'Prisfall! 🔥',
+            message: `${priceDropItem.title} har falt med ${priceDifference} kr (${percentageDrop}%) - nå kun ${priceDropItem.current_price} kr`,
+            data: {
+              product: priceDropItem.title,
+              originalPrice: priceDropItem.previous_price,
+              newPrice: priceDropItem.current_price,
+              savings: priceDifference,
+              percentage: percentageDrop
+            },
+            read: false
+          })
+
+        if (notificationError) {
+          console.error(`Error creating notification for ${priceDropItem.id}:`, notificationError)
+          results.errors++
+          continue
+        }
+
+        // Log til konsollen for debugging
+        console.log(`🔔 Prisfall-varsel opprettet: "${priceDropItem.title}"`)
         console.log(`   Bruker: ${priceDropItem.profiles?.full_name || priceDropItem.profiles?.email}`)
         console.log(`   Tidligere pris: ${priceDropItem.previous_price} kr`)
         console.log(`   Ny pris: ${priceDropItem.current_price} kr`)
@@ -54,8 +77,8 @@ export async function POST(request: NextRequest) {
         console.log(`   ---`)
 
         // Oppdater at varsel er sendt
-        const { error: updateError } = await (supabase
-          .from('wishlists') as any)
+        const { error: updateError } = await supabase
+          .from('wishlists')
           .update({
             price_drop_notification_sent: true,
             updated_at: new Date().toISOString()

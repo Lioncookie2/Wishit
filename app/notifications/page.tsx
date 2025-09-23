@@ -28,57 +28,16 @@ export default function NotificationsPage() {
   const loadNotifications = async () => {
     setLoading(true)
     try {
-      // Simulerte notifikasjoner for demo
-      const mockNotifications: Notification[] = [
-        {
-          id: '1',
-          type: 'price_drop',
-          title: 'Prisfall! 🔥',
-          message: 'iPhone 15 Pro har falt med 500 kr - nå kun 13,490 kr',
-          timestamp: '2025-09-21T18:30:00Z',
-          read: false,
-          data: { originalPrice: 13990, newPrice: 13490, product: 'iPhone 15 Pro' }
-        },
-        {
-          id: '2',
-          type: 'gift_purchased',
-          title: 'Gave kjøpt! 🎁',
-          message: 'Sebastian kjøpte "Sittepute" for Kari',
-          timestamp: '2025-09-21T15:20:00Z',
-          read: false,
-          data: { buyer: 'Sebastian', item: 'Sittepute', recipient: 'Kari' }
-        },
-        {
-          id: '3',
-          type: 'group_activity',
-          title: 'Ny gruppe! 👥',
-          message: 'Du ble lagt til i gruppen "Julefest 2025"',
-          timestamp: '2025-09-21T12:10:00Z',
-          read: true,
-          data: { groupName: 'Julefest 2025' }
-        },
-        {
-          id: '4',
-          type: 'secret_santa',
-          title: 'Secret Santa! 🎅',
-          message: 'Du har fått tildelt din hemmelige gaveperson',
-          timestamp: '2025-09-20T20:00:00Z',
-          read: true,
-          data: { recipient: 'Kari', budget: 500 }
-        },
-        {
-          id: '5',
-          type: 'premium',
-          title: 'Premium aktivert! ⭐',
-          message: 'Velkommen til Wishit Premium! Alle funksjoner er nå tilgjengelige',
-          timestamp: '2025-09-20T10:30:00Z',
-          read: true,
-          data: {}
-        }
-      ]
+      const response = await fetch('/api/notifications')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Kunne ikke laste varsler')
+      }
 
-      setNotifications(mockNotifications)
+      setNotifications(data.notifications || [])
     } catch (error) {
+      console.error('Error loading notifications:', error)
       toast.error('Kunne ikke laste varsler')
     } finally {
       setLoading(false)
@@ -86,27 +45,80 @@ export default function NotificationsPage() {
   }
 
   const markAsRead = async (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notificationId 
-          ? { ...notif, read: true }
-          : notif
-      )
-    )
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notificationId, read: true }),
+      })
+
+      if (response.ok) {
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notificationId 
+              ? { ...notif, read: true }
+              : notif
+          )
+        )
+      } else {
+        toast.error('Kunne ikke markere som lest')
+      }
+    } catch (error) {
+      console.error('Error marking as read:', error)
+      toast.error('Kunne ikke markere som lest')
+    }
   }
 
   const markAllAsRead = async () => {
-    setNotifications(prev => 
-      prev.map(notif => ({ ...notif, read: true }))
-    )
-    toast.success('Alle varsler markert som lest')
+    try {
+      // Mark all unread notifications as read
+      const unreadNotifications = notifications.filter(n => !n.read)
+      const promises = unreadNotifications.map(notif => 
+        fetch('/api/notifications', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ notificationId: notif.id, read: true }),
+        })
+      )
+
+      await Promise.all(promises)
+      
+      setNotifications(prev => 
+        prev.map(notif => ({ ...notif, read: true }))
+      )
+      toast.success('Alle varsler markert som lest')
+    } catch (error) {
+      console.error('Error marking all as read:', error)
+      toast.error('Kunne ikke markere alle som lest')
+    }
   }
 
   const deleteNotification = async (notificationId: string) => {
-    setNotifications(prev => 
-      prev.filter(notif => notif.id !== notificationId)
-    )
-    toast.success('Varsel slettet')
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notificationId }),
+      })
+
+      if (response.ok) {
+        setNotifications(prev => 
+          prev.filter(notif => notif.id !== notificationId)
+        )
+        toast.success('Varsel slettet')
+      } else {
+        toast.error('Kunne ikke slette varsel')
+      }
+    } catch (error) {
+      console.error('Error deleting notification:', error)
+      toast.error('Kunne ikke slette varsel')
+    }
   }
 
   const getNotificationIcon = (type: string) => {

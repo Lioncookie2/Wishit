@@ -35,77 +35,16 @@ export default function PriceOverviewPage() {
   const loadPriceData = async () => {
     setLoading(true)
     try {
-      // Simulerte prisdata for demo
-      const mockPriceData: PriceItem[] = [
-        {
-          id: '1',
-          title: 'iPhone 15 Pro 128GB',
-          currentPrice: 13490,
-          previousPrice: 13990,
-          priceChange: -500,
-          priceChangePercent: -3.6,
-          lastUpdated: '2025-09-21T18:30:00Z',
-          imageUrl: '/placeholder-iphone.jpg',
-          productUrl: 'https://www.elkjop.no/iphone-15-pro',
-          owner: 'Sebastian',
-          groupName: 'Familie'
-        },
-        {
-          id: '2',
-          title: 'Sony WH-1000XM5 Hodetelefoner',
-          currentPrice: 3490,
-          previousPrice: 3290,
-          priceChange: 200,
-          priceChangePercent: 6.1,
-          lastUpdated: '2025-09-21T15:20:00Z',
-          imageUrl: '/placeholder-headphones.jpg',
-          productUrl: 'https://www.elkjop.no/sony-wh-1000xm5',
-          owner: 'Kari',
-          groupName: 'Venner'
-        },
-        {
-          id: '3',
-          title: 'Apple Watch Series 9',
-          currentPrice: 4490,
-          previousPrice: 4490,
-          priceChange: 0,
-          priceChangePercent: 0,
-          lastUpdated: '2025-09-21T12:10:00Z',
-          imageUrl: '/placeholder-watch.jpg',
-          productUrl: 'https://www.apple.com/apple-watch-series-9',
-          owner: 'Ola',
-          groupName: 'Familie'
-        },
-        {
-          id: '4',
-          title: 'Nintendo Switch OLED',
-          currentPrice: 2790,
-          previousPrice: 3190,
-          priceChange: -400,
-          priceChangePercent: -12.5,
-          lastUpdated: '2025-09-20T20:00:00Z',
-          imageUrl: '/placeholder-switch.jpg',
-          productUrl: 'https://www.elkjop.no/nintendo-switch-oled',
-          owner: 'Emma',
-          groupName: 'Venner'
-        },
-        {
-          id: '5',
-          title: 'Dyson V15 Detect',
-          currentPrice: 5990,
-          previousPrice: 6490,
-          priceChange: -500,
-          priceChangePercent: -7.7,
-          lastUpdated: '2025-09-20T10:30:00Z',
-          imageUrl: '/placeholder-dyson.jpg',
-          productUrl: 'https://www.dyson.no/v15-detect',
-          owner: 'Sebastian',
-          groupName: 'Familie'
-        }
-      ]
+      const response = await fetch('/api/price-overview')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Kunne ikke laste prisdata')
+      }
 
-      setPriceItems(mockPriceData)
+      setPriceItems(data.priceItems || [])
     } catch (error) {
+      console.error('Error loading price data:', error)
       toast.error('Kunne ikke laste prisdata')
     } finally {
       setLoading(false)

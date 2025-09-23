@@ -23,16 +23,67 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Hent bruker fra Authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const { isPremium, transactionId, couponCode, userId } = await request.json()
+
+    if (typeof isPremium !== 'boolean') {
       return NextResponse.json(
-        { message: 'Mangler autorisasjon' },
-        { status: 401 }
+        { message: 'Ugyldig premium-status' },
+        { status: 400 }
       )
     }
 
-    const token = authHeader.split(' ')[1]
+    // Hvis det er en kupongkode, valider den
+    if (couponCode) {
+      const validCoupons = ['Premium2025', 'Wishit2025', 'Test123']
+      if (!validCoupons.includes(couponCode)) {
+        return NextResponse.json(
+          { error: 'Ugyldig kupongkode' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Hent bruker fra Authorization header eller userId
+    let user
+    if (userId) {
+      // For kupongkoder, bruk userId direkte
+      user = { id: userId }
+    } else {
+      // For vanlige kjøp, bruk Authorization header
+      const authHeader = request.headers.get('authorization')
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return NextResponse.json(
+          { message: 'Mangler autorisasjon' },
+          { status: 401 }
+        )
+      }
+
+      const token = authHeader.split(' ')[1]
+      
+      // Opprett ny Supabase client med riktige miljøvariabler
+      const supabaseAdminReal = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        }
+      )
+
+      // Verifiser token og hent bruker
+      const { data: { user: authUser }, error: authError } = await supabaseAdminReal.auth.getUser(token)
+      
+      if (authError || !authUser) {
+        return NextResponse.json(
+          { message: 'Ugyldig autorisasjon' },
+          { status: 401 }
+        )
+      }
+      
+      user = authUser
+    }
     
     // Opprett ny Supabase client med riktige miljøvariabler
     const supabaseAdminReal = createClient(
@@ -45,25 +96,6 @@ export async function POST(request: NextRequest) {
         }
       }
     )
-
-    // Verifiser token og hent bruker
-    const { data: { user }, error: authError } = await supabaseAdminReal.auth.getUser(token)
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { message: 'Ugyldig autorisasjon' },
-        { status: 401 }
-      )
-    }
-
-    const { isPremium, transactionId } = await request.json()
-
-    if (typeof isPremium !== 'boolean') {
-      return NextResponse.json(
-        { message: 'Ugyldig premium-status' },
-        { status: 400 }
-      )
-    }
 
     // Oppdater premium-status i profiles tabell
     const { error: updateError } = await supabaseAdminReal
@@ -91,6 +123,7 @@ export async function POST(request: NextRequest) {
             user_id: user.id,
             transaction_id: transactionId,
             is_premium: isPremium,
+            coupon_code: couponCode || null,
             created_at: new Date().toISOString()
           })
       } catch (logError) {
